@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-  name: "NetworkKit",
+  name: "Dessert",
   platforms: [
     .iOS(.v13),
     .macOS(.v10_15),
@@ -13,24 +13,33 @@ let package = Package(
   ],
   products: [
     .library(
-      name: "NetworkKit",
-      targets: ["NetworkKit","CombineNetworkKit", "RxNetworkKit"]),
+      name: "Dessert",
+      targets: ["Dessert"]
+    ),
+    .library(
+      name: "CombineDessert",
+      targets: ["CombineDessert"]
+    ),
+    .library(
+      name: "RxDessert",
+      targets: ["RxDessert"]
+    )
   ],
   dependencies: [
     .package(url: "https://github.com/ReactiveX/RxSwift.git", from: "6.0.0"),
   ],
   targets: [
     .target(
-      name: "NetworkKit",
+      name: "Dessert",
       dependencies: []
     ),
     .target(
-      name: "CombineNetworkKit",
-      dependencies: ["NetworkKit"]
+      name: "CombineDessert",
+      dependencies: ["Dessert"]
     ),
     .target(
-      name: "RxNetworkKit",
-      dependencies: ["NetworkKit", "RxSwift"]
+      name: "RxDessert",
+      dependencies: ["Dessert", "RxSwift"]
     ),
   ]
 )

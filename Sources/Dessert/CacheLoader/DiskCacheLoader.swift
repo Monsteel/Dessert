@@ -2,21 +2,35 @@
 import Foundation
 
 extension DiskCacheLoader {
+  /// 공유 인스턴스
+  /// Note: 해당 인스턴스를 사용하여 디스크 캐시에 접근합니다.
   internal static let shared = DiskCacheLoader()
 }
 
+/// 디스크 캐시 로더
+/// Note: 디스크 캐시를 저장하고 가져오는 기능을 제공합니다.
 internal final class DiskCacheLoader: CacheLoader {
+  /// 파일 매니저
   private let fm: FileManager
+  /// 디스패치 큐
   private let queue: DispatchQueue
 
+  /// initializer
+  /// - Parameters:
+  ///   - fm: 파일 매니저
+  ///   - queue: 디스패치 큐
   internal init(
     fm: FileManager = .default,
-    queue: DispatchQueue = DispatchQueue(label: "com.NetworkKit.DiskCacheLoader")
+    queue: DispatchQueue = DispatchQueue(label: "com.Dessert.DiskCacheLoader")
   ) {
     self.fm = fm
     self.queue = queue
   }
 
+  /// 캐시를 저장합니다.
+  /// - Parameters:
+  ///   - key: 키
+  ///   - value: 캐시 컨테이너
   internal func save(for key: String, _ value: CacheContainer) async throws {
     return try await withCheckedThrowingContinuation { continuation in
       queue.async {
@@ -63,6 +77,10 @@ internal final class DiskCacheLoader: CacheLoader {
     }
   }
 
+  /// 캐시를 가져옵니다.
+  /// - Parameters:
+  ///   - key: 키
+  /// - Returns: 캐시 컨테이너
   internal func get(for key: String) async throws -> CacheContainer {
     return try await withCheckedThrowingContinuation { continuation in
       queue.async {
@@ -90,6 +108,7 @@ internal final class DiskCacheLoader: CacheLoader {
     }
   }
 
+  /// 디스크 캐시 경로
   private var diskCachePath: URL {
     let documentDirectoryPath = NSSearchPathForDirectoriesInDomains(
       .cachesDirectory,
@@ -97,42 +116,26 @@ internal final class DiskCacheLoader: CacheLoader {
       true
     )[0] as NSString
 
-    let diskCachePath = documentDirectoryPath.appendingPathComponent("NetworkKit")
+    let diskCachePath = documentDirectoryPath.appendingPathComponent("Dessert")
 
     return URL(fileURLWithPath: diskCachePath)
   }
 
+  /// 디스크 캐시 로컬 URL
+  /// - Parameters:
+  ///   - remoteURL: 원격 URL
+  /// - Returns: 디스크 캐시 로컬 URL
   private func diskCacheLocalURL(_ remoteURL: URL) -> URL {
-    // Get URL components to include query parameters in the cache file name
-    guard let components = URLComponents(url: remoteURL, resolvingAgainstBaseURL: false) else {
-      return diskCachePath
-        .appendingPathComponent(remoteURL.lastPathComponent)
-        .appendingPathExtension("json")
-    }
-    
-    // Create a unique filename using the path and query parameters
-    var filename = remoteURL.lastPathComponent
-    if let queryItems = components.queryItems {
-      let queryString = queryItems
-        .sorted { $0.name < $1.name }
-        .map { item in
-          if let value = item.value {
-            return "\(item.name)=\(value)"
-          }
-          return item.name
-        }
-        .joined(separator: "&")
-      
-      if !queryString.isEmpty {
-        filename += "_\(queryString)"
-      }
-    }
+    // URL encode the entire remote URL string
+    let encodedFilename = remoteURL.absoluteString
+      .addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? remoteURL.lastPathComponent
     
     return diskCachePath
-      .appendingPathComponent(filename)
+      .appendingPathComponent(encodedFilename)
       .appendingPathExtension("json")
   }
-  
+
+  /// 디스크 캐시를 삭제합니다.
   internal func clear() async throws {
     return try await withCheckedThrowingContinuation { continuation in
       queue.async {

@@ -1,73 +1,105 @@
 
 import Foundation
 
+/// 정의된 ``Router`` 에 따른 요청 처리를 담당합니다.
 public final class RouterManager<T: Router> {
-  private let router: T
-  private let requestType: RequestType
+  private let retryContainer: RetryContainer<T>
 
   private let diskCacheLoader: CacheLoader = DiskCacheLoader.shared
   private let memoryCacheLoader: CacheLoader = MemoryCacheLoader.shared
 
+  private let interceptor: Interceptor
+  private let retrier: Retrier
+  private let networkEventMonitor: NetworkEventMonitor?
+
+  /// ``RouterManager``를 생성합니다.
+  /// - Parameters:
+  ///   - interceptor: 해당 라우터에서 사용할 ``Interceptor``
+  ///   - retrier: 해당 라우터에서 사용할 ``Retrier``
+  ///   - networkEventMonitor: 해당 라우터에서 사용할 ``NetworkEventMonitor``
+  ///   - maxRetryCount: 최대 재시도 횟수
   public init(
-    router: T,
-    requestType: RequestType = .remote
+    interceptor: Interceptor = DefaultInterceptor(),
+    retrier: Retrier = DefaultRetrier(),
+    networkEventMonitor: NetworkEventMonitor? = nil,
+    maxRetryCount: Int = 3
   ) {
-    self.router = router
-    self.requestType = requestType
+    self.interceptor = interceptor
+    self.retrier = retrier
+    self.networkEventMonitor = networkEventMonitor
+    self.retryContainer = RetryContainer(maxRetryCount: maxRetryCount)
   }
 
   /// 요청을 보냅니다.
+  /// - Parameters:
+  ///   - router: ``Router``의 구현체
+  ///   - requestType: ``RequestType`` 값, 기본값은 ``RequestType/remote`` 입니다.
   /// - Returns: 요청 결과 데이터
-  public func request() async throws -> Data {
+  public func request(_ router: T, requestType: RequestType = .remote) async throws -> Data {
     switch requestType {
     case .remote:
+      retryContainer.setRetryCount(router: router, count: 0)
       return try await sendRequest(router: router)
     case .cache:
       return try await cacheRequest(router: router)
-    case .stub, .delayed:
-      return try await stubRequest(router: router)
+    case .stub, .delayedStub:
+      return try await stubRequest(router: router, requestType: requestType)
     }
   }
 }
 
+/// RouterManager 내부 확장
+///
+/// request Type에 따른 요청 함수가 정의되어 있습니다.
 fileprivate extension RouterManager {
   /// 요청을 보냅니다.
-  /// - Parameter router: 라우터
+  /// - Parameters:
+  ///   - router: 라우터
   /// - Returns: 요청 결과 데이터
-  func sendRequest(router: T) async throws -> Data {
-    let urlRequest = try createURLRequest(router: router)
+  private func sendRequest(router: T) async throws -> Data {
+    do {
+      let urlRequest = try await createURLRequest(router: router)
 
-    if let url = urlRequest.url, router.method.isEnableEtag {
-      let container = try await fetchCache(
-        for: url,
-        enableDiskCache: router.method.isEnableDiskCache
-      )
+      var cacheContainer: CacheContainer? = nil
+    
+      if let url = urlRequest.url, router.method.isEnableEtag {
+        do {
+          cacheContainer = try await fetchCache(
+            for: url,
+            enableDiskCache: router.method.isEnableDiskCache
+          )
+        } catch {
+          Logger.log("E-Tag가 활성화되어 있지만 저장된 캐시 조회에 실패했습니다. 첫번째 요청인 경우 이 문제가 발생할 수 있습니다.", error)
+        }
+      }
+
       return try await requestWithCache(
         urlRequest: urlRequest,
         isEnableEtag: router.method.isEnableEtag,
         isEnableDiskCache: router.method.isEnableDiskCache,
-        container: container
+        cacheContainer: cacheContainer
       )
-    } else {
-      return try await requestWithCache(
-        urlRequest: urlRequest,
-        isEnableEtag: router.method.isEnableEtag,
-        isEnableDiskCache: router.method.isEnableDiskCache,
-        container: nil
-      )
+    } catch {
+      if retryContainer.isRetryable(router: router), await retrier.retry(dueTo: error) {
+        retryContainer.appendRetryCount(router: router, appendCount: 1)
+        return try await sendRequest(router: router)
+      }
+      throw error
     }
   }
   
   /// stub을 반환합니다.
-  /// - Parameter router: 라우터
+  /// - Parameters:
+  ///   - router: 라우터
+  ///   - requestType: 요청 타입
   /// - Returns: stub 데이터
-  func stubRequest(router: T) async throws -> Data {
+  private func stubRequest(router: T, requestType: RequestType) async throws -> Data {
     switch requestType {
     case .remote, .cache:
       throw RouterManagerErrorFactory.requestTypeError()
     case .stub:
       return router.sampleData
-    case let .delayed(delay):
+    case let .delayedStub(delay):
       try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
       return router.sampleData
     }
@@ -76,11 +108,12 @@ fileprivate extension RouterManager {
   /// 캐시를 요청합니다.
   /// - Note: 디스크 캐시는 메모리 캐시가 없을 경우에만 확인합니다. (우선순위: 메모리 캐시 -> 디스크 캐시)
   /// 디스크 캐시에서 캐시가 조회되면, 메모리 캐시에 저장합니다.
-  /// - Parameter router: 라우터
+  /// - Parameters:
+  ///   - router: 라우터
   /// - Returns: 캐시된 데이터
   /// - Throws: 캐시 조회 실패 시. (캐시가 없을 경우.)
-  func cacheRequest(router: T) async throws -> Data {
-    let urlRequest = try createURLRequest(router: router)
+  private func cacheRequest(router: T) async throws -> Data {
+    let urlRequest = try await createURLRequest(router: router)
     
     guard let url = urlRequest.url else {
       throw RouterManagerErrorFactory.urlIsNil()
@@ -95,6 +128,8 @@ fileprivate extension RouterManager {
   }
 }
 
+/// RouterManager 내부 확장
+/// NOTE: 캐시 관련 함수 및 내부에서 사용되는 함수가 정의되어 있습니다.
 fileprivate extension RouterManager {
   /// 캐시를 가져옵니다.
   /// - Note: 디스크 캐시는 메모리 캐시가 없을 경우에만 확인합니다. (우선순위: 메모리 캐시 -> 디스크 캐시)
@@ -127,7 +162,7 @@ fileprivate extension RouterManager {
       return container
     }
   }
-
+  
   /// 요청을 보냅니다.
   /// - Note: 캐시가 존재할 경우, Etag를 통해 변경 사항이 있는지 확인합니다.
   /// 변경 사항이 없을 경우, 캐시 데이터를 반환합니다.
@@ -136,157 +171,132 @@ fileprivate extension RouterManager {
   ///   - urlRequest: URL 요청
   ///   - isEnableEtag: Etag 사용 여부
   ///   - isEnableDiskCache: 디스크 캐시 사용 여부
-  ///   - container: 캐시
+  ///   - cacheContainer: 캐시 컨테이너
   /// - Returns: 요청 결과 데이터
   private func requestWithCache(
     urlRequest: URLRequest,
     isEnableEtag: Bool,
     isEnableDiskCache: Bool,
-    container: CacheContainer?
+    cacheContainer: CacheContainer?
   ) async throws -> Data {
     var urlRequest = urlRequest
-
-    if let etag = container?.etag, isEnableEtag {
+    
+    if let etag = cacheContainer?.etag, isEnableEtag {
       urlRequest.setValue(etag, forHTTPHeaderField: "If-None-Match")
     }
-
-    let (data, response) = try await URLSession.shared.data(for: urlRequest)
+    
+    let data: Data
+    var response: URLResponse? = nil
+    
+    do {
+      networkEventMonitor?.requestDidStart(urlRequest)
+      (data, response) = try await URLSession.shared.data(for: urlRequest)
+      networkEventMonitor?.requestDidFinish(urlRequest, response, data)
+    } catch {
+      throw RouterManagerErrorFactory.requestError(response: response, error)
+    }
     
     guard let httpResponse = response as? HTTPURLResponse else {
       throw RouterManagerErrorFactory.urlResponseIsNil()
     }
-
-    if let container = container {
+    
+    if let cacheContainer = cacheContainer {
       if 304 == httpResponse.statusCode {
-        return container.data
+        return cacheContainer.data
       }
     }
-
+    
     if (200 ..< 300) ~= httpResponse.statusCode {
       guard let url = urlRequest.url else {
         throw RouterManagerErrorFactory.urlIsNil()
       }
-
+      
       if isEnableEtag {
         let etag = httpResponse.allHeaderFields["Etag"] as? String
-        do {
-          try await saveCache(
-            for: url,
-            enableDiskCache: isEnableDiskCache,
-            container: .init(data: data, etag: etag)
-          )
-        } catch {
-          Logger.log("캐시 저장에 실패했습니다: %s", error)
-        }
+        await saveCache(
+          for: url,
+          enableDiskCache: isEnableDiskCache,
+          cacheContainer: .init(data: data, etag: etag)
+        )
       }
       
       return data
     }
-
+    
     throw RouterManagerErrorFactory.badResponse(httpResponse)
   }
-
+  
   /// 캐시를 저장합니다.
   /// - Note: 캐시를 저장합니다.
   /// 메모리 캐시에 우선 저장하며 디스크 캐시가 활성화되어 있을 경우, 디스크 캐시에도 저장합니다.
   /// - Parameters:
   ///   - url: 요청 URL
   ///   - enableDiskCache: 디스크 캐시 사용 여부
-  ///   - container: 캐시
+  ///   - cacheContainer: 캐시 컨테이너
   private func saveCache(
     for url: URL,
     enableDiskCache: Bool,
-    container: CacheContainer
-  ) async throws {
+    cacheContainer: CacheContainer
+  ) async {
     do {
-      try await memoryCacheLoader.save(for: url.absoluteString, container)
+      try await memoryCacheLoader.save(for: url.absoluteString, cacheContainer)
     } catch {
-      if !enableDiskCache {
-        throw error
-      }
-      Logger.log("메모리 캐시 저장에 실패했습니다: %s", error)
+      Logger.log("E-Tag가 활성화 되어 있지만, 메모리 캐시 저장에 실패했습니다.", error)
     }
-
+    
     if enableDiskCache {
-      try await diskCacheLoader.save(for: url.absoluteString, container)
+      do {
+        try await diskCacheLoader.save(for: url.absoluteString, cacheContainer)
+      } catch {
+        Logger.log("E-Tag와 DiskCache가 활성화 되어 있지만, 디스크 캐시 저장에 실패했습니다.", error)
+      }
     }
   }
-
+  
   /// URLRequest를 생성합니다.
   /// - Parameters:
   ///   - router: 라우터
   /// - Returns: URL 요청
-  private func createURLRequest(router: T) throws -> URLRequest {
+  private func createURLRequest(router: T) async throws -> URLRequest {
+    var urlRequest = {
+      var urlRequest = URLRequest(url: router.baseURL.appendingPathComponent(router.path))
+      urlRequest.httpMethod = router.method.rawValue
+      urlRequest.allHTTPHeaderFields = router.headers
+      if router.method.isEnableEtag {
+        urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
+      }
+      return urlRequest
+    }()
+    
     switch router.task {
     case .requestPlain:
-      var urlRequest = URLRequest(url: router.baseURL.appendingPathComponent(router.path))
-      urlRequest.httpMethod = router.method.rawValue
-      urlRequest.allHTTPHeaderFields = router.headers
       urlRequest.httpBody = nil
-      if router.method.isEnableEtag {
-        urlRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-      }
-      return urlRequest
       
     case let .requestJSONEncodable(encodable):
-      var urlRequest = URLRequest(url: router.baseURL.appendingPathComponent(router.path))
-      urlRequest.httpMethod = router.method.rawValue
-      urlRequest.allHTTPHeaderFields = router.headers
       urlRequest.httpBody = try JSONEncoder().encode(encodable)
-      if router.method.isEnableEtag {
-        urlRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-      }
-      return urlRequest
       
     case let .requestCustomJSONEncodable(encodable, encoder):
-      var urlRequest = URLRequest(url: router.baseURL.appendingPathComponent(router.path))
-      urlRequest.httpMethod = router.method.rawValue
-      urlRequest.allHTTPHeaderFields = router.headers
       urlRequest.httpBody = try encoder.encode(encodable)
-      if router.method.isEnableEtag {
-        urlRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-      }
-      return urlRequest
       
     case let .requestParameters(parameters, type):
       switch type {
       case .body:
-        var urlRequest = URLRequest(url: router.baseURL.appendingPathComponent(router.path))
-        urlRequest.httpMethod = router.method.rawValue
-        urlRequest.allHTTPHeaderFields = router.headers
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: parameters, options: [])
-        if router.method.isEnableEtag {
-          urlRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        }
-        return urlRequest
 
       case .query:
         var components = URLComponents(url: router.baseURL.appendingPathComponent(router.path), resolvingAgainstBaseURL: false)
         components?.queryItems = parameters.map { URLQueryItem(name: $0.key, value: "\($0.value)") }
         guard let url = components?.url else { throw RouterManagerErrorFactory.urlIsNil() }
-        
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = router.method.rawValue
-        urlRequest.allHTTPHeaderFields = router.headers
-        if router.method.isEnableEtag {
-          urlRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        }
-        return urlRequest
+        urlRequest.url = url
       }
     }
+    
+    do {
+      urlRequest = try await interceptor.intercept(urlRequest)
+    } catch {
+      throw RouterManagerErrorFactory.interceptorError(error)
+    }
+    
+    return urlRequest
   }
-}
-
-public enum RequestType {
-  /// 원격 요청을 사용합니다.
-  case remote
-  
-  /// 캐시를 사용합니다.
-  case cache
-
-  /// stub을 사용합니다.
-  case stub
-
-  /// 딜레이 이후 stub을 return합니다.
-  case delayed(seconds: TimeInterval)
 }
