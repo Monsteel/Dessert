@@ -1,4 +1,4 @@
-# 🍰Dessert
+# 🍰 Dessert
 
 #### 🍰 달달한 Rest 네트워킹 모듈 인데, 이제 E-Tag를 곁들인.
 
@@ -13,7 +13,7 @@
 
 ## 사용방법
 
-### Router(https://github.com/Monsteel/Dessert/blob/main/Sources/Dessert/Router/Types/Router.swift)구현하기<br>
+### [Router](https://github.com/Monsteel/Dessert/blob/main/Sources/Dessert/Router/Types/Router.swift)구현하기<br>
 
 아래처럼 라우터를 구현할 수 있습니다.
 
