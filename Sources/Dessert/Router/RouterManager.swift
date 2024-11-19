@@ -259,7 +259,7 @@ fileprivate extension RouterManager {
   /// - Returns: URL 요청
   private func createURLRequest(router: T) async throws -> URLRequest {
     var urlRequest = {
-      var urlRequest = URLRequest(url: router.baseURL.appendingPathComponent(router.path))
+      var urlRequest = URLRequest(url: router.path.isEmpty ? router.baseURL : router.baseURL.appendingPathComponent(router.path))
       urlRequest.httpMethod = router.method.rawValue
       urlRequest.allHTTPHeaderFields = router.headers
       if router.method.isEnableEtag {
@@ -284,7 +284,7 @@ fileprivate extension RouterManager {
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: parameters, options: [])
 
       case .query:
-        var components = URLComponents(url: router.baseURL.appendingPathComponent(router.path), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: router.path.isEmpty ? router.baseURL : router.baseURL.appendingPathComponent(router.path), resolvingAgainstBaseURL: false)
         components?.queryItems = parameters.map { URLQueryItem(name: $0.key, value: "\($0.value)") }
         guard let url = components?.url else { throw RouterManagerErrorFactory.urlIsNil() }
         urlRequest.url = url
