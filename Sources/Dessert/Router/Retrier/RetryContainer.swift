@@ -5,6 +5,9 @@ import Foundation
 internal final class RetryContainer<T: Router> {
   /// 재시도 횟수를 저장합니다.
   private var retryCounts: [T: Int] = [:]
+  
+  /// 재시도 횟수 접근을 동기화하기 위한 락
+  private let lock = NSLock()
 
   /// 최대 재시도 횟수를 저장합니다.
   private var maxRetryCount: Int
@@ -19,6 +22,8 @@ internal final class RetryContainer<T: Router> {
   /// - Parameter router: 라우터
   /// - Returns: 재시도 가능 여부
   internal func isRetryable(router: T) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
     return self.getRetryCount(router: router) < self.maxRetryCount
   }
 
@@ -26,6 +31,8 @@ internal final class RetryContainer<T: Router> {
   /// - Parameter router: 라우터
   /// - Returns: 재시도 횟수
   internal func getRetryCount(router: T) -> Int {
+    lock.lock()
+    defer { lock.unlock() }
     return retryCounts[router] ?? 0
   }
 
@@ -34,6 +41,8 @@ internal final class RetryContainer<T: Router> {
   ///   - router: 라우터
   ///   - count: 재시도 횟수
   internal func setRetryCount(router: T, count: Int) {
+    lock.lock()
+    defer { lock.unlock() }
     retryCounts[router] = count
   }
 
@@ -42,7 +51,9 @@ internal final class RetryContainer<T: Router> {
   ///   - router: 라우터
   ///   - appendCount: 추가할 재시도 횟수
   internal func appendRetryCount(router: T, appendCount: Int) {
-    let currentCount = self.getRetryCount(router: router)
-    self.setRetryCount(router: router, count: currentCount + appendCount)
+    lock.lock()
+    defer { lock.unlock() }
+    let currentCount = retryCounts[router] ?? 0
+    retryCounts[router] = currentCount + appendCount
   }
 }
