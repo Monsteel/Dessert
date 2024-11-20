@@ -273,22 +273,64 @@ fileprivate extension RouterManager {
       urlRequest.httpBody = nil
       
     case let .requestJSONEncodable(encodable):
+      urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
       urlRequest.httpBody = try JSONEncoder().encode(encodable)
-      
+
     case let .requestCustomJSONEncodable(encodable, encoder):
+      urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
       urlRequest.httpBody = try encoder.encode(encodable)
       
     case let .requestParameters(parameters, type):
       switch type {
       case .body:
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: parameters, options: [])
 
       case .query:
+      if case .post = router.method {
+          // POST 요청의 경우 x-www-form-urlencoded 로 전송합니다.
+          let formBody = parameters.map { key, value in
+            let encodedKey = "\(key)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "\(key)"
+            let encodedValue = "\(value)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "\(value)"
+            return "\(encodedKey)=\(encodedValue)"
+          }.joined(separator: "&")
+          
+          urlRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+          urlRequest.httpBody = formBody.data(using: .utf8)
+        } else {
         var components = URLComponents(url: router.path.isEmpty ? router.baseURL : router.baseURL.appendingPathComponent(router.path), resolvingAgainstBaseURL: false)
-        components?.queryItems = parameters.map { URLQueryItem(name: $0.key, value: "\($0.value)") }
-        guard let url = components?.url else { throw RouterManagerErrorFactory.urlIsNil() }
-        urlRequest.url = url
+          components?.queryItems = parameters.map { URLQueryItem(name: $0.key, value: "\($0.value)") }
+          guard let url = components?.url else { throw RouterManagerErrorFactory.urlIsNil() }
+          urlRequest.url = url
+        }
       }
+
+    case let .multipartFormData(boundary, parts):
+      let boundary = boundary ?? UUID().uuidString
+
+      urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+      var body = Data()
+      
+      for part in parts {
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+
+        var contentDisposition = "Content-Disposition: form-data; name=\"\(part.name)\""
+        if let fileName = part.fileName {
+          contentDisposition += "; filename=\"\(fileName)\""
+        }
+        body.append("\(contentDisposition)\r\n".data(using: .utf8)!)
+
+        body.append("Content-Type: \(part.mimeType)\r\n\r\n".data(using: .utf8)!)
+
+        body.append(part.data)
+
+        body.append("\r\n".data(using: .utf8)!)
+      }
+
+      body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+      urlRequest.httpBody = body
     }
     
     do {

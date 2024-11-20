@@ -50,4 +50,10 @@ public enum RouterTask {
   ///
   /// 파라미터 타입에 따라, Body에 전달되거나 URL에 쿼리 파라미터로 전달됩니다.
   case requestParameters(parameters: [String: Any], type: ParameterType = .body)
+
+  /// multipart/form-data 형식의 데이터를 설정한 Request  
+  /// - Parameters:
+  ///   - boundary: multipart/form-data의 boundary 입니다. nil일 경우 자동으로 생성됩니다.
+  ///   - parts: multipart/form-data의 part 요소
+  case multipartFormData(boundary: String? = nil, parts: [MultipartFormDataPart])
 }
