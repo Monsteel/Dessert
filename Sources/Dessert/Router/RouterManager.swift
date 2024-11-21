@@ -3,8 +3,6 @@ import Foundation
 
 /// 정의된 ``Router`` 에 따른 요청 처리를 담당합니다.
 public final class RouterManager<T: Router> {
-  private let retryContainer: RetryContainer<T>
-
   private let diskCacheLoader: CacheLoader = DiskCacheLoader.shared
   private let memoryCacheLoader: CacheLoader = MemoryCacheLoader.shared
 
@@ -17,17 +15,14 @@ public final class RouterManager<T: Router> {
   ///   - interceptor: 해당 라우터에서 사용할 ``Interceptor``
   ///   - retrier: 해당 라우터에서 사용할 ``Retrier``
   ///   - networkEventMonitor: 해당 라우터에서 사용할 ``NetworkEventMonitor``
-  ///   - maxRetryCount: 최대 재시도 횟수
   public init(
     interceptor: Interceptor = DefaultInterceptor(),
     retrier: Retrier = DefaultRetrier(),
-    networkEventMonitor: NetworkEventMonitor? = nil,
-    maxRetryCount: Int = 3
+    networkEventMonitor: NetworkEventMonitor? = nil
   ) {
     self.interceptor = interceptor
     self.retrier = retrier
     self.networkEventMonitor = networkEventMonitor
-    self.retryContainer = RetryContainer(maxRetryCount: maxRetryCount)
   }
 
   /// 요청을 보냅니다.
@@ -38,7 +33,6 @@ public final class RouterManager<T: Router> {
   public func request(_ router: T, requestType: RequestType = .remote) async throws -> Data {
     switch requestType {
     case .remote:
-      retryContainer.setRetryCount(router: router, count: 0)
       return try await sendRequest(router: router)
     case .cache:
       return try await cacheRequest(router: router)
@@ -55,35 +49,44 @@ fileprivate extension RouterManager {
   /// 요청을 보냅니다.
   /// - Parameters:
   ///   - router: 라우터
+  ///   - retryCount: 재시도 횟수
   /// - Returns: 요청 결과 데이터
-  private func sendRequest(router: T) async throws -> Data {
+  private func sendRequest(router: T, retryCount: Int = 0) async throws -> Data {
+    let urlRequest: URLRequest
+
     do {
-      let urlRequest = try await createURLRequest(router: router)
+      urlRequest = try await createURLRequest(router: router)
+    } catch {
+      throw RouterManagerErrorFactory.failedCreateURLRequest(error)
+    }
 
-      var cacheContainer: CacheContainer? = nil
+    var cacheContainer: CacheContainer? = nil
     
-      if let url = urlRequest.url, router.method.isEnableEtag {
-        do {
-          cacheContainer = try await fetchCache(
-            for: url,
-            enableDiskCache: router.method.isEnableDiskCache
-          )
-        } catch {
-          Logger.log("E-Tag가 활성화되어 있지만 저장된 캐시 조회에 실패했습니다. 첫번째 요청인 경우 이 문제가 발생할 수 있습니다.", error)
-        }
+    if let url = urlRequest.url, router.method.isEnableEtag {
+      do {
+        cacheContainer = try await fetchCache(
+          for: url,
+          enableDiskCache: router.method.isEnableDiskCache
+        )
+      } catch {
+        Logger.log("E-Tag가 활성화되어 있지만 저장된 캐시 조회에 실패했습니다. 첫번째 요청인 경우 이 문제가 발생할 수 있습니다.", error)
       }
+    }
 
-      return try await requestWithCache(
+    do {
+      let response = try await requestWithCache(
         urlRequest: urlRequest,
         isEnableEtag: router.method.isEnableEtag,
         isEnableDiskCache: router.method.isEnableDiskCache,
         cacheContainer: cacheContainer
       )
+
+      return response
     } catch {
-      if retryContainer.isRetryable(router: router), await retrier.retry(dueTo: error) {
-        retryContainer.appendRetryCount(router: router, appendCount: 1)
-        return try await sendRequest(router: router)
+      if await retrier.retry(router: router, dueTo: error, retryCount: retryCount) {
+        return try await sendRequest(router: router, retryCount: retryCount + 1)
       }
+
       throw error
     }
   }

@@ -7,7 +7,9 @@ import Foundation
 public protocol Retrier {
   /// 재시도 여부를 결정하여 반환합니다.
   /// - Parameters:
+  ///   - router: 라우터
   ///   - error: 에러
+  ///   - retryCount: 재시도 횟수
   /// - Returns: 재시도 여부
-  func retry(dueTo error: Error) async -> Bool
+  func retry(router: Router, dueTo error: Error, retryCount: Int) async -> Bool
 }
