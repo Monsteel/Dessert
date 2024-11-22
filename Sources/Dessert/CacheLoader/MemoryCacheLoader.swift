@@ -2,21 +2,21 @@
 import Foundation
 
 extension MemoryCacheLoader {
-  /// 공유 인스턴스
-  /// Note: 해당 인스턴스를 사용하여 메모리 캐시에 접근합니다.
-  internal static let shared = MemoryCacheLoader()
+  /// 기본 메모리 캐시 로더
+  /// Note: 기본 메모리 캐시 로더입니다.
+  public static let `default` = MemoryCacheLoader()
 }
 
 /// 메모리 캐시 로더
 /// Note: 메모리 캐시를 저장하고 가져오는 기능을 제공합니다.
-internal final class MemoryCacheLoader: CacheLoader {
+public final class MemoryCacheLoader: CacheLoader {
   /// 캐시
   private let cache: NSCache<NSString, NSData>
 
   /// initializer
   /// - Parameters:
-  ///   - cache: 캐시
-  internal init(
+  ///   - cache: NSCache
+  public init(
     cache: NSCache<NSString, NSData> = NSCache<NSString, NSData>()
   ) {
     self.cache = cache

@@ -5,7 +5,7 @@ extension CacheManager {
   /// 접근 가능한 인스턴스
   ///
   /// 해당 인스턴스를 통해 메모리 캐시와 디스크 캐시에 접근할 수 있습니다.
-  public static let shared = CacheManager()
+  public static let `default` = CacheManager()
 }
 
 /// 캐시 매니저
@@ -24,8 +24,8 @@ public final class CacheManager {
   ///   - memoryCacheLoader: 메모리 캐시 로더
   ///   - diskCacheLoader: 디스크 캐시 로더
   private init(
-    memoryCacheLoader: MemoryCacheLoader = .shared,
-    diskCacheLoader: DiskCacheLoader = .shared
+    memoryCacheLoader: MemoryCacheLoader = .default,
+    diskCacheLoader: DiskCacheLoader = .default
   ) {
     self.memoryCacheLoader = memoryCacheLoader
     self.diskCacheLoader = diskCacheLoader

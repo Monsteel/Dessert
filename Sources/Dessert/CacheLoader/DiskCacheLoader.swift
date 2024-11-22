@@ -2,29 +2,34 @@
 import Foundation
 
 extension DiskCacheLoader {
-  /// 공유 인스턴스
-  /// Note: 해당 인스턴스를 사용하여 디스크 캐시에 접근합니다.
-  internal static let shared = DiskCacheLoader()
+  /// 기본 디스크 캐시 로더
+  /// Note: 기본 디스크 캐시 로더입니다.
+  public static let `default` = DiskCacheLoader()
 }
 
 /// 디스크 캐시 로더
 /// Note: 디스크 캐시를 저장하고 가져오는 기능을 제공합니다.
-internal final class DiskCacheLoader: CacheLoader {
+public final class DiskCacheLoader: CacheLoader {
   /// 파일 매니저
   private let fm: FileManager
   /// 디스패치 큐
   private let queue: DispatchQueue
+  /// 경로
+  private let path: String
 
   /// initializer
   /// - Parameters:
   ///   - fm: 파일 매니저
   ///   - queue: 디스패치 큐
-  internal init(
+  ///   - path: 경로 (Dessert 하위 경로로 지정 됩니다.)
+  public init(
     fm: FileManager = .default,
-    queue: DispatchQueue = DispatchQueue(label: "com.Dessert.DiskCacheLoader")
+    queue: DispatchQueue = DispatchQueue(label: "com.Dessert.DiskCacheLoader"),
+    path: String = ""
   ) {
     self.fm = fm
     self.queue = queue
+    self.path = path
   }
 
   /// 캐시를 저장합니다.
@@ -116,7 +121,7 @@ internal final class DiskCacheLoader: CacheLoader {
       true
     )[0] as NSString
 
-    let diskCachePath = documentDirectoryPath.appendingPathComponent("Dessert")
+    let diskCachePath = documentDirectoryPath.appendingPathComponent("Dessert/\(path)")
 
     return URL(fileURLWithPath: diskCachePath)
   }

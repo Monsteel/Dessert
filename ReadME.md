@@ -129,7 +129,7 @@ import Foundation
 public final class SampleDessertRetrier: Retrier {
   public init() {}
 
-  public func retry(dueTo error: Error) async -> Bool {
+  public func retry(router: Router, dueTo error: Error, retryCount: Int) async -> Bool {
     let error = error as NSError
 
     guard let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError else {
@@ -217,6 +217,7 @@ extension Data {
 ```swift
 import Dessert
 
+
 public func fetchData() async throws-> ResponseDTO {
   let interceptor = SampleDessertInterceptor(firebaseAuth: .auth())
   let retrier = SampleDessertRetrier()
@@ -225,7 +226,9 @@ public func fetchData() async throws-> ResponseDTO {
   let routerManager = RouterManager<ExampleAPI>.init(
     interceptor: interceptor,
     retrier: retrier,
-    networkEventMonitor: networkEventMonitor
+    networkEventMonitor: networkEventMonitor,
+    diskCacheLoader: .default, // or init
+    memoryCacheLoader: .default // or init
   )
 
   let data = try await routerManager.request(.fetchData, requestType: .remote)

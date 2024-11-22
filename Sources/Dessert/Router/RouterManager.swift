@@ -3,8 +3,8 @@ import Foundation
 
 /// 정의된 ``Router`` 에 따른 요청 처리를 담당합니다.
 public final class RouterManager<T: Router> {
-  private let diskCacheLoader: CacheLoader = DiskCacheLoader.shared
-  private let memoryCacheLoader: CacheLoader = MemoryCacheLoader.shared
+  private let diskCacheLoader: CacheLoader
+  private let memoryCacheLoader: CacheLoader
 
   private let interceptor: Interceptor
   private let retrier: Retrier
@@ -15,14 +15,20 @@ public final class RouterManager<T: Router> {
   ///   - interceptor: 해당 라우터에서 사용할 ``Interceptor``
   ///   - retrier: 해당 라우터에서 사용할 ``Retrier``
   ///   - networkEventMonitor: 해당 라우터에서 사용할 ``NetworkEventMonitor``
+  ///   - diskCacheLoader: 디스크 캐시 로더
+  ///   - memoryCacheLoader: 메모리 캐시 로더
   public init(
     interceptor: Interceptor = DefaultInterceptor(),
     retrier: Retrier = DefaultRetrier(),
-    networkEventMonitor: NetworkEventMonitor? = nil
+    networkEventMonitor: NetworkEventMonitor? = nil,
+    diskCacheLoader: DiskCacheLoader = .default,
+    memoryCacheLoader: MemoryCacheLoader = .default
   ) {
     self.interceptor = interceptor
     self.retrier = retrier
     self.networkEventMonitor = networkEventMonitor
+    self.diskCacheLoader = diskCacheLoader
+    self.memoryCacheLoader = memoryCacheLoader
   }
 
   /// 요청을 보냅니다.
