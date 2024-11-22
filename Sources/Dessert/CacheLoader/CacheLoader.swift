@@ -14,6 +14,4 @@ internal protocol CacheLoader {
   ///   - key: 키
   /// - Returns: 캐시 컨테이너
   func get(for key: String) async throws -> CacheContainer
-  /// 캐시를 삭제합니다.
-  func clear() async throws
 }

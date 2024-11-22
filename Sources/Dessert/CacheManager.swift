@@ -23,7 +23,7 @@ public final class CacheManager {
   /// - Parameters:
   ///   - memoryCacheLoader: 메모리 캐시 로더
   ///   - diskCacheLoader: 디스크 캐시 로더
-  private init(
+  public init(
     memoryCacheLoader: MemoryCacheLoader = .default,
     diskCacheLoader: DiskCacheLoader = .default
   ) {
