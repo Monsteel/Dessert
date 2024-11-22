@@ -290,7 +290,7 @@ fileprivate extension RouterManager {
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: parameters, options: [])
 
       case .query:
-      if case .post = router.method {
+        if case .post = router.method {
           // POST 요청의 경우 x-www-form-urlencoded 로 전송합니다.
           let formBody = parameters.map { key, value in
             let encodedKey = "\(key)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "\(key)"
@@ -301,8 +301,9 @@ fileprivate extension RouterManager {
           urlRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
           urlRequest.httpBody = formBody.data(using: .utf8)
         } else {
-        var components = URLComponents(url: router.path.isEmpty ? router.baseURL : router.baseURL.appendingPathComponent(router.path), resolvingAgainstBaseURL: false)
-          components?.queryItems = parameters.map { URLQueryItem(name: $0.key, value: "\($0.value)") }
+          var components = URLComponents(url: router.path.isEmpty ? router.baseURL : router.baseURL.appendingPathComponent(router.path), resolvingAgainstBaseURL: false)
+          components?.queryItems = parameters.sorted { $0.key < $1.key }
+            .map { URLQueryItem(name: $0.key, value: "\($0.value)") }
           guard let url = components?.url else { throw RouterManagerErrorFactory.urlIsNil() }
           urlRequest.url = url
         }

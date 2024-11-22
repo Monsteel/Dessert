@@ -12,19 +12,14 @@ extension MemoryCacheLoader {
 internal final class MemoryCacheLoader: CacheLoader {
   /// 캐시
   private let cache: NSCache<NSString, NSData>
-  /// 디스패치 큐
-  private let queue: DispatchQueue
 
   /// initializer
   /// - Parameters:
   ///   - cache: 캐시
-  ///   - queue: 디스패치 큐
   internal init(
-    cache: NSCache<NSString, NSData> = NSCache<NSString, NSData>(),
-    queue: DispatchQueue = DispatchQueue(label: "com.Dessert.MemoryCacheLoader")
+    cache: NSCache<NSString, NSData> = NSCache<NSString, NSData>()
   ) {
     self.cache = cache
-    self.queue = queue
   }
 
   /// 캐시를 저장합니다.
@@ -32,16 +27,11 @@ internal final class MemoryCacheLoader: CacheLoader {
   ///   - key: 키
   ///   - value: 캐시 컨테이너
   internal func save(for key: String, _ value: CacheContainer) async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      queue.async {
-        do {
-          let data = try JSONEncoder().encode(value)
-          self.cache.setObject(NSData(data: data), forKey: NSString(string: key))
-          continuation.resume(returning: ())
-        } catch {
-          continuation.resume(throwing: CacheLoaderErrorFactory.failedToEncode(error))
-        }
-      }
+    do {
+      let data = try JSONEncoder().encode(value)
+      self.cache.setObject(NSData(data: data), forKey: NSString(string: key))
+    } catch {
+      throw CacheLoaderErrorFactory.failedToEncode(error)
     }
   }
 
@@ -50,29 +40,21 @@ internal final class MemoryCacheLoader: CacheLoader {
   ///   - key: 키
   /// - Returns: 캐시 컨테이너
   internal func get(for key: String) async throws -> CacheContainer {
-    return try await withCheckedThrowingContinuation { continuation in
-      queue.async {
-        if let data = self.cache.object(forKey: NSString(string: key)) as Data? {
-          do {
-            let value = try JSONDecoder().decode(CacheContainer.self, from: data)
-            continuation.resume(returning: value)
-          } catch {
-            continuation.resume(throwing: CacheLoaderErrorFactory.failedToDecode(error))
-          }
-        } else {
-          continuation.resume(throwing: CacheLoaderErrorFactory.memoryCacheNotFound(key))
-        }
-      }
+    guard let nsData = self.cache.object(forKey: NSString(string: key)) else {
+      throw CacheLoaderErrorFactory.memoryCacheNotFound(key)
+    }
+
+    do {
+      let data = Data(referencing: nsData)
+      let value = try JSONDecoder().decode(CacheContainer.self, from: data)
+      return value
+    } catch {
+      throw CacheLoaderErrorFactory.failedToDecode(error)
     }
   }
 
   /// 캐시를 삭제합니다.
   internal func clear() async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      queue.async {
-        self.cache.removeAllObjects()
-        continuation.resume(returning: ())
-      }
-    }
+    self.cache.removeAllObjects()
   }
 }
