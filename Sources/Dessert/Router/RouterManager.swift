@@ -10,6 +10,8 @@ public final class RouterManager<T: Router> {
   private let retrier: Retrier
   private let networkEventMonitor: NetworkEventMonitor?
 
+  private let requestType: RequestType
+
   /// ``RouterManager``를 생성합니다.
   /// - Parameters:
   ///   - interceptor: 해당 라우터에서 사용할 ``Interceptor``
@@ -17,18 +19,21 @@ public final class RouterManager<T: Router> {
   ///   - networkEventMonitor: 해당 라우터에서 사용할 ``NetworkEventMonitor``
   ///   - diskCacheLoader: 디스크 캐시 로더
   ///   - memoryCacheLoader: 메모리 캐시 로더
+  ///   - requestType: 요청 타입, 기본값은 ``RequestType/remote`` 입니다.
   public init(
     interceptor: Interceptor = DefaultInterceptor(),
     retrier: Retrier = DefaultRetrier(),
     networkEventMonitor: NetworkEventMonitor? = nil,
     diskCacheLoader: DiskCacheLoader = .default,
-    memoryCacheLoader: MemoryCacheLoader = .default
+    memoryCacheLoader: MemoryCacheLoader = .default,
+    requestType: RequestType = .remote
   ) {
     self.interceptor = interceptor
     self.retrier = retrier
     self.networkEventMonitor = networkEventMonitor
     self.diskCacheLoader = diskCacheLoader
     self.memoryCacheLoader = memoryCacheLoader
+    self.requestType = requestType
   }
 
   /// 요청을 보냅니다.
@@ -36,6 +41,7 @@ public final class RouterManager<T: Router> {
   ///   - router: ``Router``의 구현체
   ///   - requestType: ``RequestType`` 값, 기본값은 ``RequestType/remote`` 입니다.
   /// - Returns: 요청 결과 데이터
+  @available(*, deprecated, message: "이 메서드는 더 이상 사용되지 않습니다. request(_:)를 대체하여 사용하고, requestType은 RouterManager 생성자에서 설정하세요.")
   public func request(_ router: T, requestType: RequestType = .remote) async throws -> Data {
     switch requestType {
     case .remote:
@@ -44,6 +50,21 @@ public final class RouterManager<T: Router> {
       return try await cacheRequest(router: router)
     case .stub, .delayedStub:
       return try await stubRequest(router: router, requestType: requestType)
+    }
+  }
+
+  /// 요청을 보냅니다.
+  /// - Parameters:
+  ///   - router: ``Router``의 구현체
+  /// - Returns: 요청 결과 데이터
+  public func request(_ router: T) async throws -> Data {
+    switch self.requestType {
+    case .remote:
+      return try await sendRequest(router: router)
+    case .cache:
+      return try await cacheRequest(router: router)
+    case .stub, .delayedStub:
+      return try await stubRequest(router: router, requestType: self.requestType)
     }
   }
 }
