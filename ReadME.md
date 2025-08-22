@@ -92,7 +92,7 @@ import Dessert
 import Foundation
 import Then
 
-public final class SampleDessertInterceptor: Interceptor {
+public actor SampleDessertInterceptor: Interceptor {
   private let firebaseAuth: Auth
 
   init(firebaseAuth: Auth) {
@@ -126,7 +126,7 @@ public final class SampleDessertInterceptor: Interceptor {
 import Dessert
 import Foundation
 
-public final class SampleDessertRetrier: Retrier {
+public actor SampleDessertRetrier: Retrier {
   public init() {}
 
   public func retry(router: Router, dueTo error: Error, retryCount: Int) async -> Bool {
@@ -167,7 +167,7 @@ public final class SampleDessertRetrier: Retrier {
 import Dessert
 import Foundation
 
-public final class SampleDessertNetworkEventMonitor: NetworkEventMonitor {
+public actor SampleDessertNetworkEventMonitor: NetworkEventMonitor {
   public init() {}
 
   public func requestDidStart(_ request: URLRequest) {
