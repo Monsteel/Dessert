@@ -3,7 +3,7 @@ import Foundation
 
 /// 캐시 로더
 /// Note: 캐시 로더는 캐시를 저장하고 가져오는 기능을 제공합니다.
-internal protocol CacheLoader {
+internal protocol CacheLoader: Sendable {
   /// 캐시를 저장합니다.
   /// - Parameters:
   ///   - key: 키

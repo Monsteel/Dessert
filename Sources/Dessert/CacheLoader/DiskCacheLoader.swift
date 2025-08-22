@@ -9,7 +9,7 @@ extension DiskCacheLoader {
 
 /// 디스크 캐시 로더
 /// Note: 디스크 캐시를 저장하고 가져오는 기능을 제공합니다.
-public final class DiskCacheLoader: CacheLoader {
+public struct DiskCacheLoader: CacheLoader, @unchecked Sendable {
   /// 파일 매니저
   private let fm: FileManager
   /// 디스패치 큐

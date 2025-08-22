@@ -15,13 +15,9 @@ extension RouterManager {
       let task = Task {
         do {
           let data = try await self.request(router, requestType: requestType)
-          await MainActor.run {
-            observer(.success(data))
-          }
+          observer(.success(data))
         } catch {
-          await MainActor.run {
-            observer(.failure(error))
-          }
+          observer(.failure(error))
         }
       }
 
@@ -40,13 +36,9 @@ extension RouterManager {
       let task = Task {
         do {
           let data = try await self.request(router)
-          await MainActor.run {
-            observer(.success(data))
-          }
+          observer(.success(data))
         } catch {
-          await MainActor.run {
-            observer(.failure(error))
-          }
+          observer(.failure(error))
         }
       }
 

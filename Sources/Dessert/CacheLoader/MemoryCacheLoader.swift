@@ -9,7 +9,7 @@ extension MemoryCacheLoader {
 
 /// 메모리 캐시 로더
 /// Note: 메모리 캐시를 저장하고 가져오는 기능을 제공합니다.
-public final class MemoryCacheLoader: CacheLoader {
+public struct MemoryCacheLoader: CacheLoader, @unchecked Sendable {
   /// 캐시
   private let cache: NSCache<NSString, NSData>
 

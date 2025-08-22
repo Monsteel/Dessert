@@ -4,7 +4,7 @@ import Foundation
 /// 기본 ``Interceptor`` 입니다.
 ///
 /// 기본 ``Interceptor``는 URLRequest 를 변형하지 않도록 구현되어 있습니다.
-public final class DefaultInterceptor: Interceptor {
+public actor DefaultInterceptor: Interceptor {
   /// ``DefaultInterceptor`` 인스턴스를 생성합니다.
   public init() {}
 

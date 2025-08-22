@@ -13,7 +13,7 @@ extension CacheManager {
 /// 메모리 캐시와 디스크 캐시에 접근할 수 있습니다.
 ///
 /// ``CacheManager/shared`` 를 통해 접근하여야 하며, 직접적으로 캐시에 접근하는 것은 불가능합니다.
-public final class CacheManager {
+public struct CacheManager: Sendable {
   /// 메모리 캐시 로더
   private let memoryCacheLoader: MemoryCacheLoader
   /// 디스크 캐시 로더

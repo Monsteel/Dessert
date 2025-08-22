@@ -2,7 +2,7 @@
 import Foundation
 
 /// 정의된 ``Router`` 에 따른 요청 처리를 담당합니다.
-public final class RouterManager<T: Router> {
+public struct RouterManager<T: Router>: @unchecked Sendable {
   private let diskCacheLoader: CacheLoader
   private let memoryCacheLoader: CacheLoader
 

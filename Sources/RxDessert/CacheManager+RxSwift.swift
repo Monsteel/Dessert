@@ -13,13 +13,9 @@ extension CacheManager {
       let task = Task {
         do {
           try await self.clear()
-          await MainActor.run {
-            observer(.success(()))
-          }
+          observer(.success(()))
         } catch {
-          await MainActor.run {
-            observer(.failure(error))
-          }
+          observer(.failure(error))
         }
       }
 
