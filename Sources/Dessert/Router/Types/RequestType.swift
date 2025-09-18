@@ -17,14 +17,18 @@ public enum RequestType {
 
   /// stub을 return합니다.
   ///
-  /// ``Router/sampleData`` 에 설정된 데이터를 반환합니다.
-  case stub
+  /// - Parameters:
+  ///   - dataFactory: 반환할 Data factory
+  ///
+  /// 인자로 전달된 dataFactory의 return값 Data를 반환합니다.
+  case stub(_ dataFactory: (Router) -> Data)
 
   /// 딜레이 이후 stub을 return합니다.
   ///
   /// - Parameters:
   ///   - seconds: 딜레이 시간
-  /// 
-  /// ``Router/sampleData`` 에 설정된 데이터를 반환합니다.
-  case delayedStub(seconds: TimeInterval)
+  ///   - dataFactory: 반환할 Data factory
+  ///
+  /// 인자로 전달된 dataFactory의 return값 Data를 반환합니다.
+  case delayedStub(seconds: TimeInterval, _ dataFactory: (Router) -> Data)
 }

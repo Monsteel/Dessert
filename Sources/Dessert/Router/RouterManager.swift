@@ -127,11 +127,11 @@ fileprivate extension RouterManager {
     switch requestType {
     case .remote, .cache:
       throw RouterManagerErrorFactory.requestTypeError()
-    case .stub:
-      return router.sampleData
-    case let .delayedStub(delay):
+    case let .stub(dataFactory):
+      return dataFactory(router)
+    case let .delayedStub(delay, dataFactory):
       try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-      return router.sampleData
+      return dataFactory(router)
     }
   }
 

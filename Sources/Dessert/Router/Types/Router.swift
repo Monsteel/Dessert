@@ -10,6 +10,7 @@ public protocol Router {
   /// HTTP 메서드
   var method: HttpMethod { get }
   /// 샘플 데이터
+  @available(*, deprecated, message: "이 값은 더 이상 사용되지 않습니다. RouterManager 생성자에 사용되는 RequestType의 stub, delayedStub case의 data영역을 사용하세요.")
   var sampleData: Data { get }
   /// 작업
   var task: RouterTask { get }
@@ -19,6 +20,7 @@ public protocol Router {
 
 public extension Router {
   /// `stub` 데이터가 테스팅에 사용될 때, 기본 데이터는 `Data()` 입니다.
+  @available(*, deprecated, message: "이 값은 더 이상 사용되지 않습니다. RouterManager 생성자에 사용되는 RequestType의 stub, delayedStub case의 data영역을 사용하세요.")
   var sampleData: Data { .init() }
 }
 
