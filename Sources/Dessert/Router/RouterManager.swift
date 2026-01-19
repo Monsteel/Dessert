@@ -2,7 +2,7 @@
 import Foundation
 
 /// 정의된 ``Router`` 에 따른 요청 처리를 담당합니다.
-public struct RouterManager<T: Router>: @unchecked Sendable {
+public struct RouterManager<T: Router>: Sendable {
   private let diskCacheLoader: CacheLoader
   private let memoryCacheLoader: CacheLoader
 
@@ -26,7 +26,7 @@ public struct RouterManager<T: Router>: @unchecked Sendable {
     networkEventMonitor: NetworkEventMonitor? = nil,
     diskCacheLoader: DiskCacheLoader = .default,
     memoryCacheLoader: MemoryCacheLoader = .default,
-    requestType: RequestType = .remote
+    requestType: RequestType = .remote(URLSession.init(configuration: .default))
   ) {
     self.interceptor = interceptor
     self.retrier = retrier
@@ -39,28 +39,11 @@ public struct RouterManager<T: Router>: @unchecked Sendable {
   /// 요청을 보냅니다.
   /// - Parameters:
   ///   - router: ``Router``의 구현체
-  ///   - requestType: ``RequestType`` 값, 기본값은 ``RequestType/remote`` 입니다.
-  /// - Returns: 요청 결과 데이터
-  @available(*, deprecated, message: "이 메서드는 더 이상 사용되지 않습니다. request(_:)를 대체하여 사용하고, requestType은 RouterManager 생성자에서 설정하세요.")
-  public func request(_ router: T, requestType: RequestType = .remote) async throws -> Data {
-    switch requestType {
-    case .remote:
-      return try await sendRequest(router: router)
-    case .cache:
-      return try await cacheRequest(router: router)
-    case .stub, .delayedStub:
-      return try await stubRequest(router: router, requestType: requestType)
-    }
-  }
-
-  /// 요청을 보냅니다.
-  /// - Parameters:
-  ///   - router: ``Router``의 구현체
   /// - Returns: 요청 결과 데이터
   public func request(_ router: T) async throws -> Data {
     switch self.requestType {
-    case .remote:
-      return try await sendRequest(router: router)
+    case let .remote(urlSession):
+      return try await sendRequest(urlSession, router: router)
     case .cache:
       return try await cacheRequest(router: router)
     case .stub, .delayedStub:
@@ -75,10 +58,11 @@ public struct RouterManager<T: Router>: @unchecked Sendable {
 fileprivate extension RouterManager {
   /// 요청을 보냅니다.
   /// - Parameters:
+  ///   - urlSession: URL SESSION
   ///   - router: 라우터
   ///   - retryCount: 재시도 횟수
   /// - Returns: 요청 결과 데이터
-  private func sendRequest(router: T, retryCount: Int = 0) async throws -> Data {
+  private func sendRequest(_ urlSession: URLSession, router: T, retryCount: Int = 0) async throws -> Data {
     let urlRequest: URLRequest
 
     do {
@@ -102,6 +86,7 @@ fileprivate extension RouterManager {
 
     do {
       let response = try await requestWithCache(
+        urlSession: urlSession,
         urlRequest: urlRequest,
         isEnableEtag: router.method.isEnableEtag,
         isEnableDiskCache: router.method.isEnableDiskCache,
@@ -111,7 +96,7 @@ fileprivate extension RouterManager {
       return response
     } catch {
       if await retrier.retry(router: router, dueTo: error, retryCount: retryCount) {
-        return try await sendRequest(router: router, retryCount: retryCount + 1)
+        return try await sendRequest(urlSession, router: router, retryCount: retryCount + 1)
       }
 
       throw error
@@ -198,12 +183,14 @@ fileprivate extension RouterManager {
   /// 변경 사항이 없을 경우, 캐시 데이터를 반환합니다.
   /// 변경 사항이 있을 경우, 캐시를 저장하고 데이터를 반환합니다.
   /// - Parameters:
+  ///   - urlSession: URL SESSION
   ///   - urlRequest: URL 요청
   ///   - isEnableEtag: Etag 사용 여부
   ///   - isEnableDiskCache: 디스크 캐시 사용 여부
   ///   - cacheContainer: 캐시 컨테이너
   /// - Returns: 요청 결과 데이터
   private func requestWithCache(
+    urlSession: URLSession,
     urlRequest: URLRequest,
     isEnableEtag: Bool,
     isEnableDiskCache: Bool,
@@ -220,7 +207,7 @@ fileprivate extension RouterManager {
     
     do {
       networkEventMonitor?.requestDidStart(urlRequest)
-      (data, response) = try await URLSession.shared.data(for: urlRequest)
+      (data, response) = try await urlSession.data(for: urlRequest)
       networkEventMonitor?.requestDidFinish(urlRequest, response, data)
     } catch {
       throw RouterManagerErrorFactory.requestError(response: response, error)
@@ -242,12 +229,14 @@ fileprivate extension RouterManager {
       }
       
       if isEnableEtag {
-        let etag = httpResponse.allHeaderFields["Etag"] as? String
-        await saveCache(
-          for: url,
-          enableDiskCache: isEnableDiskCache,
-          cacheContainer: .init(data: data, etag: etag)
-        )
+        Task.detached {
+          let etag = httpResponse.allHeaderFields["Etag"] as? String
+          await saveCache(
+            for: url,
+            enableDiskCache: isEnableDiskCache,
+            cacheContainer: .init(data: data, etag: etag)
+          )
+        }
       }
       
       return data

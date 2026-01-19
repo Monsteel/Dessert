@@ -2,7 +2,7 @@
 import Foundation
 
 /// 이 Protocol을 채택하여, 라우터를 구현합니다.
-public protocol Router {
+public protocol Router: Sendable {
   /// 기본 URL
   var baseURL: URL { get }
   /// 경로

@@ -10,10 +10,13 @@ extension DiskCacheLoader {
 /// 디스크 캐시 로더
 /// Note: 디스크 캐시를 저장하고 가져오는 기능을 제공합니다.
 public struct DiskCacheLoader: CacheLoader, @unchecked Sendable {
+
+  /// 최대 비용 (unit: byte)
+  private let totalCostLimit: Int
+
   /// 파일 매니저
   private let fm: FileManager
-  /// 디스패치 큐
-  private let queue: DispatchQueue
+
   /// 경로
   private let path: String
 
@@ -23,12 +26,12 @@ public struct DiskCacheLoader: CacheLoader, @unchecked Sendable {
   ///   - queue: 디스패치 큐
   ///   - path: 경로 (Dessert 하위 경로로 지정 됩니다.)
   public init(
+    totalCostLimit: Int = .zero,
     fm: FileManager = .default,
-    queue: DispatchQueue = DispatchQueue(label: "com.Dessert.DiskCacheLoader"),
     path: String = ""
   ) {
+    self.totalCostLimit = totalCostLimit
     self.fm = fm
-    self.queue = queue
     self.path = path
   }
 
@@ -37,48 +40,44 @@ public struct DiskCacheLoader: CacheLoader, @unchecked Sendable {
   ///   - key: 키
   ///   - value: 캐시 컨테이너
   internal func save(for key: String, _ value: CacheContainer) async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      queue.async {
-        do {
-          // Convert key to URL
-          guard let remoteURL = URL(string: key) else {
-            return continuation.resume(throwing: CacheLoaderErrorFactory.invalidURL(key))
-          }
-          
-          // If the directory does not exits, create it
-          if self.fm.fileExists(atPath: self.diskCachePath.path) == false {
-            try self.fm.createDirectory(at: self.diskCachePath, withIntermediateDirectories: true, attributes: nil)
-          }
-          
-          // Get local disk cache path
-          let localCachePath = self.diskCacheLocalURL(remoteURL).path
-          
-          // If the file exists, remove it
-          if self.fm.fileExists(atPath: localCachePath) {
-            try self.fm.removeItem(atPath: localCachePath)
-          }
-          
-          // Convert value to data
-          let data: Data
-          do {
-            data = try JSONEncoder().encode(value)
-          } catch {
-            return continuation.resume(throwing: CacheLoaderErrorFactory.failedToEncode(error))
-          }
-          
-          // Save data to local cache path
-          let result = self.fm.createFile(atPath: localCachePath, contents: data, attributes: nil)
-          
-          // Resume the continuation
-          if result {
-            return continuation.resume(returning: Void())
-          } else {
-            return continuation.resume(throwing: CacheLoaderErrorFactory.failedToSaveDiskCache(result))
-          }
-        } catch {
-          return continuation.resume(throwing: CacheLoaderErrorFactory.unknown(error))
-        }
-      }
+    // Convert key to URL
+    guard let remoteURL = URL(string: key) else {
+      throw CacheLoaderErrorFactory.invalidURL(key)
+    }
+
+    // If the directory does not exits, create it
+    if self.fm.fileExists(atPath: self.diskCachePath.path) == false {
+      try self.fm.createDirectory(
+        at: self.diskCachePath,
+        withIntermediateDirectories: true,
+        attributes: nil
+      )
+    }
+
+    // Get local disk cache path
+    let localCachePath = self.diskCacheLocalURL(remoteURL).path
+
+    // If the file exists, remove it
+    if self.fm.fileExists(atPath: localCachePath) {
+      try self.fm.removeItem(atPath: localCachePath)
+    }
+
+    // Convert value to data
+    let data: Data
+    do {
+      data = try JSONEncoder().encode(value)
+    } catch {
+      throw CacheLoaderErrorFactory.failedToEncode(error)
+    }
+
+    // Save data to local cache path
+    let result = self.fm.createFile(atPath: localCachePath, contents: data, attributes: nil)
+
+    // Resume the continuation
+    guard result else { throw CacheLoaderErrorFactory.failedToSaveDiskCache(result) }
+
+    Task.detached {
+      try self.clearIfNeeded()
     }
   }
 
@@ -87,29 +86,25 @@ public struct DiskCacheLoader: CacheLoader, @unchecked Sendable {
   ///   - key: 키
   /// - Returns: 캐시 컨테이너
   internal func get(for key: String) async throws -> CacheContainer {
-    return try await withCheckedThrowingContinuation { continuation in
-      queue.async {
-        // Convert key to URL
-        guard let remoteURL = URL(string: key) else {
-          return continuation.resume(throwing: CacheLoaderErrorFactory.invalidURL(key))
-        }
+    // Convert key to URL
+    guard let remoteURL = URL(string: key) else {
+      throw CacheLoaderErrorFactory.invalidURL(key)
+    }
 
-        // Get local disk cache path
-        let localCachePath = self.diskCacheLocalURL(remoteURL).path
+    // Get local disk cache path
+    let localCachePath = self.diskCacheLocalURL(remoteURL).path
 
-        // Get data from local disk cache path
-        guard let data = self.fm.contents(atPath: localCachePath) else {
-          return continuation.resume(throwing: CacheLoaderErrorFactory.diskCacheNotFound(localCachePath))
-        }
+    // Get data from local disk cache path
+    guard let data = self.fm.contents(atPath: localCachePath) else {
+      throw CacheLoaderErrorFactory.diskCacheNotFound(localCachePath)
+    }
 
-        do {
-          // Convert data to CacheContainer
-          let value = try JSONDecoder().decode(CacheContainer.self, from: data)
-          return continuation.resume(returning: value)
-        } catch {
-          return continuation.resume(throwing: CacheLoaderErrorFactory.failedToDecode(error))
-        }
-      }
+    do {
+      // Convert data to CacheContainer
+      let value = try JSONDecoder().decode(CacheContainer.self, from: data)
+      return value
+    } catch {
+      throw CacheLoaderErrorFactory.failedToDecode(error)
     }
   }
 
@@ -142,15 +137,64 @@ public struct DiskCacheLoader: CacheLoader, @unchecked Sendable {
 
   /// 디스크 캐시를 삭제합니다.
   internal func clear() async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      queue.async {
-        do {
-          try self.fm.removeItem(at: self.diskCachePath)
-          return continuation.resume(returning: Void())
-        } catch {
-          return continuation.resume(throwing: CacheLoaderErrorFactory.failedToClearDiskCache(error))
-        }
-      }
+    do {
+      return try self.fm.removeItem(at: self.diskCachePath)
+    } catch {
+      throw CacheLoaderErrorFactory.failedToClearDiskCache(error)
     }
+  }
+  
+  /// 디스크 캐시 제거가 필요한 경우 제거합니다.
+  internal func clearIfNeeded() throws {
+    if self.totalCostLimit <= .zero { return }
+    
+    let keys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
+    
+    let urls = try self.fm.contentsOfDirectory(
+      at: self.diskCachePath,
+      includingPropertiesForKeys: Array(keys),
+      options: [.skipsHiddenFiles]
+    )
+    
+    var entries: [Entry] = []
+    entries.reserveCapacity(urls.count)
+    
+    var total: UInt64 = .zero
+    
+    for url in urls {
+      let resourceValues = try url.resourceValues(forKeys: keys)
+      guard resourceValues.isRegularFile == true else { continue }
+      
+      let size = UInt64(resourceValues.fileSize ?? .zero)
+      let date = resourceValues.contentModificationDate ?? .distantPast
+      
+      total += size
+      
+      entries.append(
+        .init(
+          url: url,
+          size: size,
+          date: date
+        )
+      )
+    }
+    
+    guard total > self.totalCostLimit else { return }
+    
+    entries.sort { $0.date < $1.date }
+    
+    var current = total
+    
+    for e in entries {
+      if current <= self.totalCostLimit { break }
+      try self.fm.removeItem(at: e.url)
+      current = current > e.size ? (current - e.size) : .zero
+    }
+  }
+  
+  internal struct Entry {
+    let url: URL
+    let size: UInt64
+    let date: Date
   }
 }

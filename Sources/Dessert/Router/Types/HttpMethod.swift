@@ -2,7 +2,7 @@
 import Foundation
 
 /// HTTP 메서드
-public enum HttpMethod {
+public enum HttpMethod: Sendable {
   /// GET 메서드
   /// - Parameters:
   ///   - enableEtag: ETag 활성화 여부

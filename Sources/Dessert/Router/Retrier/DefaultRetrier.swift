@@ -4,7 +4,7 @@ import Foundation
 /// 기본 ``Retrier`` 입니다.
 ///
 /// 기본 ``Retrier``는 항상 재시도를 수행하지 않도록 구현되어 있습니다.
-public actor DefaultRetrier: Retrier {
+public struct DefaultRetrier: Retrier {
   /// ``DefaultRetrier`` 인스턴스를 생성합니다.
   public init() {}
 

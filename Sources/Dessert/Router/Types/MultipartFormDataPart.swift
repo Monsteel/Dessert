@@ -4,7 +4,7 @@ import Foundation
 /// MultipartFormDataPart
 ///
 /// multipart로 전달될 part 입니다.
-public struct MultipartFormDataPart: Hashable {
+public struct MultipartFormDataPart: Hashable, Sendable {
   /// Data
   /// 
   /// multipart로 전달될 data 입니다.
